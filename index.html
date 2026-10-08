@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Workload">
+<meta name="theme-color" content="#16222b">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" id="touchIcon" href="">
+<title>Workload</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{--ink:#16222b;--paper:#eef0f2;--amber:#f5a524}
+  *{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+  html,body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;overscroll-behavior-y:none}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  input,textarea{font-size:16px;font-family:inherit;color:var(--ink)}
+  .tap{min-height:44px;min-width:44px}
+  .chip{min-height:44px;padding:0 16px;border-radius:999px;white-space:nowrap;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:6px;border:1.5px solid transparent;transition:transform .08s}
+  .chip:active,.press:active{transform:scale(.96)}
+  .noscroll{scrollbar-width:none}.noscroll::-webkit-scrollbar{display:none}
+  .sheet{animation:up .22s cubic-bezier(.2,.8,.2,1)}
+  @keyframes up{from{transform:translateY(100%)}to{transform:none}}
+  @media (prefers-reduced-motion:reduce){.sheet{animation:none}}
+  .field{width:100%;min-height:44px;border-radius:12px;border:1.5px solid #cfd6dc;padding:0 12px;background:#fff}
+  .bar{height:8px;border-radius:99px;overflow:hidden}
+</style>
+</head>
+<body>
+<div id="app" class="max-w-xl mx-auto"></div>
+<div id="overlay"></div>
+<div id="toast" class="fixed left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-semibold text-white pointer-events-none opacity-0 transition-opacity" style="background:#16222b;bottom:calc(env(safe-area-inset-bottom) + 96px)"></div>
+<input type="file" id="importFile" accept="application/json,.json" class="hidden">
+
+<script>
+/* ---------- Apple touch icon (drawn at runtime, no image file needed) ---------- */
+(()=>{const c=document.createElement('canvas');c.width=c.height=180;const x=c.getContext('2d');
+x.fillStyle='#16222b';x.fillRect(0,0,180,180);
+[['#f5a524',34,100,28,48],['#7dd3c0',76,70,28,78],['#ffffff',118,38,28,110]].forEach(b=>{x.fillStyle=b[0];x.fillRect(b[1],b[2],b[3],b[4])});
+document.getElementById('touchIcon').href=c.toDataURL('image/png')})();
+
+/* ---------- Constants & helpers ---------- */
+const STORES=['projects','tasks','steps','logs'];
+const PALETTE=['#0f8b8d','#7c5cbf','#d6457a','#e07a1f','#3f8f4f','#b8860b','#c0392b','#2b6cb0'];
+const ST={todo:['Todo','#6b7a86'],in_progress:['In progress','#1f7ae0'],completed:['Done','#2e9a57'],blocked:['Blocked','#d63a3a']};
+const CYCLE=['todo','in_progress','completed','blocked'];
+const ORDER={in_progress:0,blocked:1,todo:2,completed:3};
+const $=s=>document.querySelector(s);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>String(+(+n).toFixed(2));
+const haptic=(ms=10)=>{try{navigator.vibrate&&navigator.vibrate(ms)}catch(e){}};
+const IC={plus:'M5 12h14M12 5v14',x:'M18 6 6 18M6 6l12 12',check:'M20 6 9 17l-5-5',down:'m6 9 6 6 6-6',trash:'M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2',menu:'M4 6h16M4 12h16M4 18h16',dl:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3',ul:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',file:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8',clock:'M12 6v6l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z'};
+const icon=(n,s=20,w=2)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
+let toastT;const toast=m=>{const t=$('#toast');t.textContent=m;t.style.opacity=1;clearTimeout(toastT);toastT=setTimeout(()=>t.style.opacity=0,1800)};
+const weekStart=()=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));return d.getTime()};
+const todayISO=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const fmtDate=d=>new Date(d+'T00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
+
+/* ---------- IndexedDB (write-through; UI reads from memory) ---------- */
+let idb;
+const S={projects:[],tasks:[],steps:[],logs:[],target:20};
+const UI={tab:'all',pf:'all',open:new Set(),sheet:null,menu:false};
+const openDB=()=>new Promise((res,rej)=>{const r=indexedDB.open('workload-tracker',1);
+  r.onupgradeneeded=()=>{STORES.forEach(s=>r.result.createObjectStore(s,{keyPath:'id'}));r.result.createObjectStore('meta',{keyPath:'k'})};
+  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+const reqP=r=>new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+function save(store,obj){const t=idb.transaction(store,'readwrite');t.objectStore(store).put(obj);t.onerror=()=>toast('Save failed')}
+function remove(store,id){const t=idb.transaction(store,'readwrite');t.objectStore(store).delete(id);t.onerror=()=>toast('Delete failed')}
+const saveTarget=()=>save('meta',{k:'target',v:S.target});
+async function loadAll(){
+  for(const s of STORES)S[s]=await reqP(idb.transaction(s).objectStore(s).getAll());
+  const m=await reqP(idb.transaction('meta').objectStore('meta').get('target'));if(m)S.target=m.v}
+function replaceAll(d){return new Promise((res,rej)=>{
+  const t=idb.transaction([...STORES,'meta'],'readwrite');
+  STORES.forEach(s=>{const o=t.objectStore(s);o.clear();(d[s]||[]).forEach(x=>o.put(x))});
+  t.objectStore('meta').put({k:'target',v:d.settings?.weekly_target||20});
+  t.oncomplete=res;t.onerror=t.onabort=()=>rej(t.error)})}
+
+/* ---------- Lookups ---------- */
+const proj=id=>S.projects.find(p=>p.id===id);
+const activeProjects=()=>S.projects.filter(p=>p.status==='active');
+const stepsOf=id=>S.steps.filter(s=>s.task_id===id);
+
+/* ---------- Main render ---------- */
+function renderMain(){
+  const strip=$('#chips');const sl=strip?strip.scrollLeft:0;
+  const wh=S.logs.filter(l=>l.logged_at>=weekStart()).reduce((a,l)=>a+l.hours,0);
+  const pct=Math.min(100,wh/(S.target||1)*100);
+  const tabs=[['all','All'],['in_progress','In progress'],['todo','Todo'],['completed','Done']];
+  const act=activeProjects();
+  let list=S.tasks.filter(t=>{const p=proj(t.project_id);return p&&p.status==='active'&&(UI.pf==='all'||t.project_id===UI.pf)&&(UI.tab==='all'||t.status===UI.tab)});
+  list.sort((a,b)=>ORDER[a.status]-ORDER[b.status]||b.updated_at-a.updated_at);
+  $('#app').innerHTML=`
+  <header class="sticky top-0 z-20 text-white" style="background:var(--ink);padding-top:env(safe-area-inset-top)">
+    <div class="px-4 pt-2 flex items-center justify-between">
+      <h1 class="text-xl font-bold tracking-tight">Workload</h1>
+      <button data-act="menu" class="tap press rounded-full grid place-items-center" aria-label="Menu">${icon('menu')}</button>
+    </div>
+    <div class="px-4 pb-3">
+      <div class="flex justify-between items-baseline text-sm" style="color:#aebbc5"><span>This week</span><span><b class="text-white text-base">${fmt(wh)}h</b> of ${fmt(S.target)}h</span></div>
+      <div class="bar mt-1.5" style="background:#2a3a46"><div style="width:${pct}%;height:100%;background:${wh>=S.target?'#7dd3c0':'var(--amber)'};transition:width .3s"></div></div>
+    </div>
+    <div class="grid grid-cols-4 px-2" style="border-top:1px solid #2a3a46">
+      ${tabs.map(([k,l])=>`<button data-act="tab" data-id="${k}" class="tap text-sm font-semibold py-2.5" style="color:${UI.tab===k?'#fff':'#8fa0ac'};border-bottom:3px solid ${UI.tab===k?'var(--amber)':'transparent'}">${l}</button>`).join('')}
+    </div>
+    <div id="chips" class="flex gap-2 overflow-x-auto noscroll px-4 py-2" style="background:#1d2d38">
+      <button data-act="pf" data-id="all" class="chip" style="background:${UI.pf==='all'?'#fff':'transparent'};color:${UI.pf==='all'?'#16222b':'#c5d0d8'};border-color:#3a4c59">All projects</button>
+      ${act.map(p=>`<button data-act="pf" data-id="${p.id}" class="chip" style="background:${UI.pf===p.id?p.color:'transparent'};color:#fff;border-color:${p.color}"><span class="w-2.5 h-2.5 rounded-full" style="background:${UI.pf===p.id?'#fff':p.color}"></span>${esc(p.name)}</button>`).join('')}
+    </div>
+  </header>
+  <main class="px-3 pt-3 space-y-3" style="padding-bottom:calc(env(safe-area-inset-bottom) + 110px)">
+    ${list.length?list.map(card).join(''):`<div class="text-center py-16 px-6" style="color:#5d6d79"><div class="mx-auto mb-3 w-14 h-14 rounded-full grid place-items-center" style="background:#dde2e6">${icon('clock',26)}</div><p class="font-semibold" style="color:var(--ink)">${S.tasks.length?'No jobs match this view':'No jobs yet'}</p><p class="text-sm mt-1">Tap <b>Log work</b> to add a project, a job and your first hours.</p></div>`}
+  </main>
+  <button data-act="logOpen" class="press fixed right-4 z-30 rounded-full font-bold flex items-center gap-2 px-5 shadow-xl" style="min-height:56px;background:var(--amber);color:#16222b;bottom:calc(env(safe-area-inset-bottom) + 16px)">${icon('plus',22,2.6)} Log work</button>`;
+  const c=$('#chips');if(c)c.scrollLeft=sl;
+}
+
+function card(t){
+  const p=proj(t.project_id),sts=stepsOf(t.id),done=sts.filter(s=>s.is_completed).length;
+  const pc=sts.length?done/sts.length*100:0,open=UI.open.has(t.id),[sl,sc]=ST[t.status];
+  const overdue=t.due_date&&t.status!=='completed'&&t.due_date<todayISO();
+  return `<article class="rounded-2xl bg-white overflow-hidden" style="box-shadow:0 1px 0 #d5dbe0,0 0 0 1px #e1e6ea">
+    <div data-act="toggle" data-id="${t.id}" class="px-4 pt-3 pb-3" style="border-left:5px solid ${p.color}">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-bold px-2.5 py-1 rounded-md" style="background:${p.color}1f;color:${p.color}">${esc(p.name)}</span>
+        <button data-act="cycle" data-id="${t.id}" class="chip ml-auto" style="min-height:44px;padding:0 12px;font-size:13px;background:${sc}1a;color:${sc};border-color:${sc}55">${sl}</button>
+      </div>
+      <h3 class="font-semibold text-[17px] leading-snug mt-1">${esc(t.title)}</h3>
+      <div class="flex items-center gap-3 text-sm mt-1" style="color:#5d6d79">
+        <span class="font-bold" style="color:var(--ink)">${fmt(t.total_hours)}h</span> logged
+        ${t.due_date?`<span style="color:${overdue?'#d63a3a':'inherit'};font-weight:${overdue?700:400}">Due ${fmtDate(t.due_date)}</span>`:''}
+        <span class="ml-auto" style="transform:rotate(${open?180:0}deg);transition:transform .2s">${icon('down',18)}</span>
+      </div>
+      ${sts.length?`<div class="mt-2.5"><div class="flex justify-between text-xs mb-1" style="color:#5d6d79"><span>${done}/${sts.length} steps completed</span><span>${Math.round(pc)}%</span></div><div class="bar" style="background:#e3e8ec"><div style="width:${pc}%;height:100%;background:${done===sts.length?'#2e9a57':p.color};transition:width .25s"></div></div></div>`:''}
+    </div>
+    ${open?`<div class="px-4 pb-3 pt-1" style="border-top:1px solid #edf0f2;background:#fafbfb">
+      ${sts.map(s=>`<div class="flex items-center gap-1">
+        <button data-act="stepToggle" data-id="${s.id}" class="tap grid place-items-center" aria-label="Toggle step"><span class="w-6 h-6 rounded-md grid place-items-center" style="border:2px solid ${s.is_completed?'#2e9a57':'#a9b4bc'};background:${s.is_completed?'#2e9a57':'#fff'};color:#fff">${s.is_completed?icon('check',16,3.5):''}</span></button>
+        <span class="flex-1 py-2 ${s.is_completed?'line-through':''}" style="color:${s.is_completed?'#8a98a3':'inherit'}">${esc(s.title)}</span>
+        <button data-act="stepDel" data-id="${s.id}" class="tap grid place-items-center" style="color:#a9b4bc" aria-label="Delete step">${icon('x',18)}</button></div>`).join('')}
+      <div class="flex gap-2 mt-1"><input class="field" id="add-${t.id}" data-add="${t.id}" placeholder="Add a step" enterkeyhint="done"><button data-act="stepAdd" data-id="${t.id}" class="tap press rounded-xl grid place-items-center text-white" style="background:var(--ink);width:48px" aria-label="Add step">${icon('plus')}</button></div>
+      <div class="flex gap-2 mt-3">
+        <button data-act="logTask" data-id="${t.id}" class="chip flex-1 justify-center" style="background:var(--ink);color:#fff">${icon('plus',16,2.6)} Log hours</button>
+        <button data-act="taskDel" data-id="${t.id}" class="chip" style="color:#d63a3a;border-color:#efc4c4">${icon('trash',16)} Delete</button>
+      </div></div>`:''}
+  </article>`;
+}
+
+/* ---------- Overlay (log sheet + menu) ---------- */
+function renderOverlay(){
+  const o=$('#overlay');
+  if(UI.sheet)o.innerHTML=logSheet();else if(UI.menu)o.innerHTML=menuSheet();else o.innerHTML='';
+  document.body.style.overflow=(UI.sheet||UI.menu)?'hidden':'';
+}
+const wrap=(title,body)=>`<div class="fixed inset-0 z-40"><div data-act="close" class="absolute inset-0" style="background:rgba(10,18,24,.55)"></div>
+  <div class="sheet absolute left-0 right-0 bottom-0 max-w-xl mx-auto rounded-t-3xl overflow-y-auto" style="background:var(--paper);max-height:88%;padding:16px 16px calc(env(safe-area-inset-bottom) + 16px)">
+    <div class="flex items-center justify-between mb-3"><h2 class="text-lg font-bold">${title}</h2><button data-act="close" class="tap press grid place-items-center rounded-full" aria-label="Close">${icon('x')}</button></div>${body}</div></div>`;
+const lbl=t=>`<p class="text-sm font-semibold mt-4 mb-2" style="color:#5d6d79">${t}</p>`;
+
+function logSheet(){
+  const q=UI.sheet,act=activeProjects();
+  const tasks=S.tasks.filter(t=>t.project_id===q.project_id&&(t.status!=='completed'||t.id===q.task_id));
+  const cur=S.tasks.find(t=>t.id===q.task_id);
+  const eff=q.status||(cur&&cur.status)||'todo';
+  return wrap('Log work',`
+    ${lbl('Project')}
+    <div class="flex flex-wrap gap-2">${act.map(p=>`<button data-act="sProj" data-id="${p.id}" class="chip" style="background:${q.project_id===p.id?p.color:'#fff'};color:${q.project_id===p.id?'#fff':'var(--ink)'};border-color:${p.color}">${esc(p.name)}</button>`).join('')}
+    <button data-act="newProj" class="chip" style="background:#fff;border:1.5px dashed #9aa8b2">${icon('plus',16,2.6)} Project</button></div>
+    ${q.project_id?`${lbl('Job')}<div class="flex flex-wrap gap-2">${tasks.map(t=>`<button data-act="sTask" data-id="${t.id}" class="chip" style="background:${q.task_id===t.id?'var(--ink)':'#fff'};color:${q.task_id===t.id?'#fff':'var(--ink)'};border-color:#c3cdd4">${esc(t.title)}</button>`).join('')}
+    <button data-act="sTask" data-id="new" class="chip" style="background:${q.task_id==='new'?'var(--ink)':'#fff'};color:${q.task_id==='new'?'#fff':'var(--ink)'};border:1.5px dashed #9aa8b2">${icon('plus',16,2.6)} New job</button></div>`:''}
+    ${q.task_id==='new'?`<div class="flex gap-2 mt-3"><input class="field flex-1" data-bind="title" placeholder="Job title" value="${esc(q.title)}"><input class="field" style="width:150px" type="date" data-bind="due" value="${esc(q.due)}" aria-label="Due date"></div>`:''}
+    ${lbl('Hours')}
+    <div class="flex items-center gap-3 mb-2"><div class="text-3xl font-extrabold tabular-nums" style="min-width:90px">+${fmt(q.hours)}h</div>
+      <button data-act="hrs0" class="chip ml-auto" style="background:#fff;border-color:#c3cdd4">Reset</button></div>
+    <div class="grid grid-cols-4 gap-2">${[0.5,1,2,4].map(h=>`<button data-act="hrs" data-id="${h}" class="press rounded-xl font-bold text-lg" style="min-height:56px;background:var(--ink);color:#fff">+${h.toFixed(1)}h</button>`).join('')}</div>
+    ${lbl('Status')}
+    <div class="grid grid-cols-4 gap-1.5">${CYCLE.map(s=>`<button data-act="sStatus" data-id="${s}" class="chip justify-center" style="padding:0 4px;font-size:13px;background:${eff===s?ST[s][1]:'#fff'};color:${eff===s?'#fff':ST[s][1]};border-color:${ST[s][1]}">${ST[s][0]}</button>`).join('')}</div>
+    ${lbl('Note')}
+    <input class="field" data-bind="note" placeholder="Optional note" value="${esc(q.note)}" enterkeyhint="done">
+    <button data-act="saveLog" class="press w-full mt-5 rounded-2xl font-bold text-lg" style="min-height:56px;background:var(--amber);color:#16222b">Save${q.hours>0?` +${fmt(q.hours)}h`:''}</button>`);
+}
+
+function menuSheet(){
+  const btn=(a,i,t)=>`<button data-act="${a}" class="tap press w-full flex items-center gap-3 px-4 rounded-xl bg-white font-semibold mb-2" style="min-height:52px;box-shadow:0 0 0 1px #e1e6ea">${icon(i)} ${t}</button>`;
+  return wrap('Settings & data',`
+    ${lbl('Weekly capacity (hours)')}
+    <input class="field" id="targetIn" type="number" inputmode="decimal" min="1" step="0.5" value="${S.target}">
+    ${lbl('Backup')}
+    ${btn('exportJson','dl','Export backup (JSON)')}${btn('importJson','ul','Import backup')}${btn('exportCsv','file','Export timesheet CSV')}
+    ${lbl('Projects')}
+    ${S.projects.length?S.projects.map(p=>`<div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full" style="background:${p.color}"></span><span class="flex-1 font-medium" style="opacity:${p.status==='archived'?.5:1}">${esc(p.name)}</span><button data-act="archive" data-id="${p.id}" class="chip" style="background:#fff;border-color:#c3cdd4">${p.status==='active'?'Archive':'Restore'}</button></div>`).join(''):'<p class="text-sm" style="color:#5d6d79">No projects yet.</p>'}
+    <p class="text-xs mt-5" style="color:#7b8a95">All data stays on this device. Export a backup regularly and save it to the Files app.</p>`);
+}
+
+/* ---------- Actions ---------- */
+const A={
+  tab:id=>{UI.tab=id;renderMain()},
+  pf:id=>{UI.pf=id;renderMain()},
+  toggle:id=>{UI.open.has(id)?UI.open.delete(id):UI.open.add(id);renderMain()},
+  cycle:id=>{const t=S.tasks.find(x=>x.id===id);t.status=CYCLE[(CYCLE.indexOf(t.status)+1)%4];t.updated_at=Date.now();save('tasks',t);renderMain()},
+  stepToggle:id=>{const s=S.steps.find(x=>x.id===id);s.is_completed=!s.is_completed;save('steps',s);renderMain();
+    const t=S.tasks.find(x=>x.id===s.task_id),all=stepsOf(t.id);
+    if(s.is_completed&&all.every(x=>x.is_completed)&&t.status!=='completed'&&confirm('All steps are done. Mark this job as completed?')){t.status='completed';t.updated_at=Date.now();save('tasks',t);haptic([15,40,15]);renderMain()}},
+  stepDel:id=>{S.steps=S.steps.filter(x=>x.id!==id);remove('steps',id);renderMain()},
+  stepAdd:tid=>{const i=document.getElementById('add-'+tid),v=i.value.trim();if(!v){i.focus();return}
+    const s={id:uid(),task_id:tid,title:v,is_completed:false,created_at:Date.now()};S.steps.push(s);save('steps',s);renderMain();document.getElementById('add-'+tid).focus()},
+  taskDel:id=>{if(!confirm('Delete this job with its steps and logged hours?'))return;
+    stepsOf(id).forEach(s=>remove('steps',s.id));S.logs.filter(l=>l.task_id===id).forEach(l=>remove('logs',l.id));
+    S.steps=S.steps.filter(s=>s.task_id!==id);S.logs=S.logs.filter(l=>l.task_id!==id);S.tasks=S.tasks.filter(t=>t.id!==id);remove('tasks',id);renderMain()},
+  logOpen:()=>{const act=activeProjects();UI.sheet={project_id:(UI.pf!=='all'&&proj(UI.pf)?.status==='active')?UI.pf:(act[0]?.id||null),task_id:null,hours:0,status:null,note:'',title:'',due:''};renderOverlay()},
+  logTask:id=>{const t=S.tasks.find(x=>x.id===id);UI.sheet={project_id:t.project_id,task_id:id,hours:0,status:null,note:'',title:'',due:''};renderOverlay()},
+  sProj:id=>{UI.sheet.project_id=id;UI.sheet.task_id=null;renderOverlay()},
+  sTask:id=>{UI.sheet.task_id=id;UI.sheet.status=null;renderOverlay()},
+  hrs:id=>{UI.sheet.hours=+(UI.sheet.hours+ +id).toFixed(2);renderOverlay()},
+  hrs0:()=>{UI.sheet.hours=0;renderOverlay()},
+  sStatus:id=>{UI.sheet.status=id;renderOverlay()},
+  newProj:()=>{const n=(prompt('Project name')||'').trim();if(!n)return;
+    const p={id:uid(),name:n,color:PALETTE[S.projects.length%PALETTE.length],status:'active',created_at:Date.now()};S.projects.push(p);save('projects',p);
+    if(UI.sheet){UI.sheet.project_id=p.id;UI.sheet.task_id='new'}renderOverlay();renderMain()},
+  saveLog:()=>{const q=UI.sheet;if(!q.project_id)return toast('Pick or add a project');
+    let t;if(q.task_id==='new'){const title=q.title.trim();if(!title)return toast('Name the new job');
+      t={id:uid(),project_id:q.project_id,title,status:'todo',total_hours:0,due_date:q.due||null,updated_at:Date.now()};S.tasks.push(t)}
+    else t=S.tasks.find(x=>x.id===q.task_id);
+    if(!t)return toast('Pick a job');
+    if(q.hours>0){const l={id:uid(),task_id:t.id,hours:q.hours,note:q.note.trim(),logged_at:Date.now()};S.logs.push(l);save('logs',l);
+      t.total_hours=+(t.total_hours+q.hours).toFixed(2);if(t.status==='todo'&&!q.status)t.status='in_progress'}
+    if(q.status)t.status=q.status;t.updated_at=Date.now();save('tasks',t);
+    UI.sheet=null;renderOverlay();renderMain();haptic([12,30,12]);toast(q.hours>0?`Logged ${fmt(q.hours)}h`:'Saved')},
+  menu:()=>{UI.menu=true;renderOverlay()},
+  close:()=>{UI.sheet=null;UI.menu=false;renderOverlay()},
+  archive:id=>{const p=proj(id);p.status=p.status==='active'?'archived':'active';save('projects',p);if(UI.pf===id)UI.pf='all';renderOverlay();renderMain()},
+  exportJson:()=>{const d={app:'workload-tracker',version:1,exported_at:new Date().toISOString(),data:{projects:S.projects,tasks:S.tasks,steps:S.steps,logs:S.logs,settings:{weekly_target:S.target}}};
+    saveFile(`workload-backup-${todayISO()}.json`,'application/json',JSON.stringify(d,null,2))},
+  importJson:()=>$('#importFile').click(),
+  exportCsv:()=>{const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+    const rows=[['Project','Job','Status','Total hours','Due date','Last updated']];
+    S.tasks.forEach(t=>rows.push([proj(t.project_id)?.name,t.title,ST[t.status][0],t.total_hours,t.due_date||'',new Date(t.updated_at).toISOString().slice(0,10)]));
+    saveFile(`timesheet-${todayISO()}.csv`,'text/csv','\ufeff'+rows.map(r=>r.map(q).join(',')).join('\r\n'))}
+};
+
+async function saveFile(name,type,text){
+  const f=new File([text],name,{type});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){
+    try{await navigator.share({files:[f],title:name});return}catch(e){if(e.name==='AbortError')return}}
+  const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),5000);toast('File downloaded')}
+
+$('#importFile').addEventListener('change',async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{const j=JSON.parse(await f.text());const d=j.data||j;
+    if(!Array.isArray(d.projects)||!Array.isArray(d.tasks))throw 0;
+    if(!confirm(`Replace all current data with this backup (${d.projects.length} projects, ${d.tasks.length} jobs)?`))return;
+    await replaceAll(d);await loadAll();UI.pf='all';UI.open.clear();A.close();renderMain();toast('Backup restored')}
+  catch(err){toast('Not a valid backup file')}});
+
+/* ---------- Events ---------- */
+document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(!el)return;haptic();A[el.dataset.act]?.(el.dataset.id,el)});
+document.addEventListener('input',e=>{const k=e.target.dataset.bind;if(k&&UI.sheet)UI.sheet[k]=e.target.value});
+document.addEventListener('change',e=>{if(e.target.id==='targetIn'){const v=parseFloat(e.target.value);if(v>0){S.target=v;saveTarget();renderMain()}}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'){if(e.target.dataset.add)A.stepAdd(e.target.dataset.add);else if(e.target.dataset.bind)e.target.blur()}});
+
+/* ---------- Boot ---------- */
+(async()=>{
+  try{idb=await openDB();await loadAll();navigator.storage?.persist?.()}
+  catch(e){toast('Storage unavailable: data will not be saved')}
+  renderMain();renderOverlay();
+})();
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+</script>
+</body>
+</html>
