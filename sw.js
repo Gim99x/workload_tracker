@@ -1,4 +1,4 @@
-const VERSION = 'workload-v2';           // bump this to force clients to refresh the cache
+const VERSION = 'workload-v3';           // bump this to force clients to refresh the cache
 const SHELL = ['./', './index.html', './manifest.json'];
 const CDN = ['https://cdn.tailwindcss.com'];
 

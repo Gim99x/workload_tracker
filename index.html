@@ -53,7 +53,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>String(+(+n).toFixed(2));
 const haptic=(ms=10)=>{try{navigator.vibrate&&navigator.vibrate(ms)}catch(e){}};
-const IC={plus:'M5 12h14M12 5v14',x:'M18 6 6 18M6 6l12 12',check:'M20 6 9 17l-5-5',down:'m6 9 6 6 6-6',trash:'M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2',menu:'M4 6h16M4 12h16M4 18h16',dl:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3',ul:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',file:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8',clock:'M12 6v6l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z'};
+const IC={plus:'M5 12h14M12 5v14',x:'M18 6 6 18M6 6l12 12',check:'M20 6 9 17l-5-5',down:'m6 9 6 6 6-6',trash:'M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2',menu:'M4 6h16M4 12h16M4 18h16',dl:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3',ul:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',file:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8',clock:'M12 6v6l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z',arrowLeft:'m12 19-7-7 7-7M19 12H5',gear:'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z'};
 const icon=(n,s=20,w=2)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
 let toastT;const toast=m=>{const t=$('#toast');t.textContent=m;t.style.opacity=1;clearTimeout(toastT);toastT=setTimeout(()=>t.style.opacity=0,1800)};
 const weekStart=()=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));return d.getTime()};
@@ -63,8 +63,7 @@ const fmtDate=d=>new Date(d+'T00:00').toLocaleDateString(undefined,{month:'short
 /* ---------- IndexedDB (write-through; UI reads from memory) ---------- */
 let idb;
 const S={projects:[],tasks:[],steps:[],logs:[],target:20};
-const UI={tab:'all',pf:'all',open:new Set(),sheet:null,menu:false,
-  hub:(()=>{try{return localStorage.getItem('hub')!=='0'}catch(e){return true}})()};
+const UI={view:'hub',pf:'all',tab:'all',open:new Set(),sheet:null,menu:false,pushed:false}; // pf = selectedProjectId when view==='project'
 const openDB=()=>new Promise((res,rej)=>{const r=indexedDB.open('workload-tracker',1);
   r.onupgradeneeded=()=>{STORES.forEach(s=>r.result.createObjectStore(s,{keyPath:'id'}));r.result.createObjectStore('meta',{keyPath:'k'})};
   r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
@@ -86,65 +85,77 @@ const proj=id=>S.projects.find(p=>p.id===id);
 const activeProjects=()=>S.projects.filter(p=>p.status==='active');
 const stepsOf=id=>S.steps.filter(s=>s.task_id===id);
 
-/* ---------- Main render ---------- */
-function renderMain(){
-  const strip=$('#chips');const sl=strip?strip.scrollLeft:0;
-  const f=UI.pf!=='all'?proj(UI.pf):null;
-  const tp=Object.fromEntries(S.tasks.map(t=>[t.id,t.project_id]));
-  const wh=S.logs.filter(l=>l.logged_at>=weekStart()&&(!f||tp[l.task_id]===f.id)).reduce((a,l)=>a+l.hours,0);
-  const pct=Math.min(100,wh/(S.target||1)*100);
-  const tabs=[['all','All'],['in_progress','In progress'],['todo','Todo'],['completed','Done']];
+/* ---------- Main render: two views (hub -> project) ---------- */
+const pstat=ts=>({n:ts.length,open:ts.filter(t=>t.status!=='completed').length,done:ts.filter(t=>t.status==='completed').length,hrs:ts.reduce((a,t)=>a+t.total_hours,0)});
+const weekHrs=ids=>S.logs.filter(l=>l.logged_at>=weekStart()&&(!ids||ids.has(l.task_id))).reduce((a,l)=>a+l.hours,0);
+const TABS=[['all','All'],['in_progress','In progress'],['todo','Todo'],['completed','Done']];
+const MAIN_PAD='padding-bottom:calc(env(safe-area-inset-bottom) + 110px)';
+const gearBtn=`<button data-act="menu" class="tap press rounded-full grid place-items-center" style="min-width:48px;min-height:48px" aria-label="Settings and backup">${icon('gear')}</button>`;
+const fabBtn=`<button data-act="logOpen" class="press fixed right-4 z-30 rounded-full font-bold flex items-center gap-2 px-5 shadow-xl" style="min-height:56px;background:var(--amber);color:#16222b;bottom:calc(env(safe-area-inset-bottom) + 16px)">${icon('plus',22,2.6)} Log work</button>`;
+
+function renderMain(){(UI.view==='project'&&proj(UI.pf))?renderProject():renderHub()}
+
+/* View 1: Project Hub (tiles only, no jobs) */
+function renderHub(){
   const act=activeProjects();
-  let list=S.tasks.filter(t=>{const p=proj(t.project_id);return p&&p.status==='active'&&(UI.pf==='all'||t.project_id===UI.pf)&&(UI.tab==='all'||t.status===UI.tab)});
-  list.sort((a,b)=>ORDER[a.status]-ORDER[b.status]||b.updated_at-a.updated_at);
+  const wh=weekHrs(),pct=Math.min(100,wh/(S.target||1)*100);
+  const tile=p=>{const s=pstat(S.tasks.filter(t=>t.project_id===p.id)),pc=s.n?s.done/s.n*100:0;
+    return `<button data-act="open" data-id="${p.id}" class="press text-left rounded-2xl p-3 flex flex-col gap-1" style="min-height:120px;border-left:6px solid ${p.color};background:#fff;box-shadow:0 0 0 1px #e1e6ea,0 2px 6px #16222b12">
+      <span class="font-bold text-[16px] leading-tight w-full" style="overflow-wrap:anywhere">${esc(p.name)}</span>
+      <span class="text-sm" style="color:#5d6d79">${s.open} open ${s.open===1?'task':'tasks'}</span>
+      <span class="text-sm font-semibold">${fmt(s.hrs)}h <span class="font-normal" style="color:#5d6d79">logged</span></span>
+      <span class="bar mt-auto" style="display:block;background:#e3e8ec"><span style="display:block;width:${pc}%;height:100%;background:${s.n&&s.done===s.n?'#2e9a57':p.color};transition:width .25s"></span></span>
+      <span class="text-[11px]" style="color:#7b8a95">${s.done}/${s.n} jobs done</span></button>`};
   $('#app').innerHTML=`
   <header class="sticky top-0 z-20 text-white" style="background:var(--ink);padding-top:env(safe-area-inset-top)">
-    <div class="px-4 pt-2 flex items-center justify-between">
-      <h1 class="text-xl font-bold tracking-tight">Workload</h1>
-      <button data-act="menu" class="tap press rounded-full grid place-items-center" aria-label="Menu">${icon('menu')}</button>
-    </div>
-    <div class="px-4 pb-3">
-      <div class="flex justify-between items-baseline text-sm" style="color:#aebbc5"><span>This week${f?' · '+esc(f.name):''}</span><span><b class="text-white text-base">${fmt(wh)}h</b> of ${fmt(S.target)}h</span></div>
+    <div class="pl-4 pr-2 pt-1 flex items-center justify-between"><h1 class="text-xl font-bold tracking-tight">Projects</h1>${gearBtn}</div>
+    <div class="px-4 pb-4 pt-1">
+      <div class="flex justify-between items-baseline text-sm" style="color:#aebbc5"><span>This week, all projects</span><span><b class="text-white text-base">${fmt(wh)}h</b> of ${fmt(S.target)}h</span></div>
       <div class="bar mt-1.5" style="background:#2a3a46"><div style="width:${pct}%;height:100%;background:${wh>=S.target?'#7dd3c0':'var(--amber)'};transition:width .3s"></div></div>
     </div>
-    <div class="grid grid-cols-4 px-2" style="border-top:1px solid #2a3a46">
-      ${tabs.map(([k,l])=>`<button data-act="tab" data-id="${k}" class="tap text-sm font-semibold py-2.5" style="color:${UI.tab===k?'#fff':'#8fa0ac'};border-bottom:3px solid ${UI.tab===k?'var(--amber)':'transparent'}">${l}</button>`).join('')}
-    </div>
-    <div id="chips" class="flex gap-2 overflow-x-auto noscroll px-4 py-2" style="background:#1d2d38">
-      <button data-act="pf" data-id="all" class="chip" style="background:${UI.pf==='all'?'#fff':'transparent'};color:${UI.pf==='all'?'#16222b':'#c5d0d8'};border-color:#3a4c59">All projects</button>
-      ${act.map(p=>`<button data-act="pf" data-id="${p.id}" class="chip" style="background:${UI.pf===p.id?p.color:'transparent'};color:#fff;border-color:${p.color}"><span class="w-2.5 h-2.5 rounded-full" style="background:${UI.pf===p.id?'#fff':p.color}"></span>${esc(p.name)}</button>`).join('')}
-    </div>
   </header>
-  <main class="px-3 pt-3 space-y-3" style="padding-bottom:calc(env(safe-area-inset-bottom) + 110px)">
-    ${hub(act)}
-    <h2 class="font-bold pt-1">Jobs${f?' · '+esc(f.name):''}</h2>
-    ${list.length?list.map(card).join(''):`<div class="text-center py-16 px-6" style="color:#5d6d79"><div class="mx-auto mb-3 w-14 h-14 rounded-full grid place-items-center" style="background:#dde2e6">${icon('clock',26)}</div><p class="font-semibold" style="color:var(--ink)">${S.tasks.length?'No jobs match this view':'No jobs yet'}</p><p class="text-sm mt-1">Tap <b>Log work</b> to add a project, a job and your first hours.</p></div>`}
-  </main>
-  <button data-act="logOpen" class="press fixed right-4 z-30 rounded-full font-bold flex items-center gap-2 px-5 shadow-xl" style="min-height:56px;background:var(--amber);color:#16222b;bottom:calc(env(safe-area-inset-bottom) + 16px)">${icon('plus',22,2.6)} Log work</button>`;
-  const c=$('#chips');if(c)c.scrollLeft=sl;
+  <main class="px-3 pt-4" style="${MAIN_PAD}">
+    <button data-act="newProj" class="press w-full rounded-2xl font-bold flex items-center justify-center gap-2 mb-4" style="min-height:52px;background:var(--amber);color:var(--ink)">${icon('plus',20,2.6)} New project</button>
+    ${act.length?`<div class="grid grid-cols-2 gap-3">${act.map(tile).join('')}</div>`
+      :`<div class="text-center py-12 px-6" style="color:#5d6d79"><p class="font-semibold" style="color:var(--ink)">No projects yet</p><p class="text-sm mt-1">Create a project to start adding jobs and logging hours.</p></div>`}
+  </main>${fabBtn}`;
 }
 
-/* ---------- Project hub (tile grid; all numbers computed live from in-memory data) ---------- */
-function hub(act){
-  const vis=S.tasks.filter(t=>proj(t.project_id)?.status==='active');
-  const stat=ts=>({n:ts.length,open:ts.filter(t=>t.status!=='completed').length,done:ts.filter(t=>t.status==='completed').length,hrs:ts.reduce((a,t)=>a+t.total_hours,0)});
-  const tile=(id,name,color,s)=>{
-    const on=UI.pf===id,pc=s.n?s.done/s.n*100:0;
-    return `<button data-act="pf" data-id="${id}" aria-pressed="${on}" class="press text-left rounded-2xl p-3 flex flex-col gap-1" style="min-height:116px;border-left:6px solid ${color};background:${on?color+'14':'#fff'};box-shadow:${on?`0 0 0 3px ${color},0 8px 18px ${color}45`:'0 0 0 1px #e1e6ea'}">
-      <span class="font-bold text-[15px] leading-tight truncate w-full">${esc(name)}</span>
-      <span class="text-sm" style="color:#5d6d79">${s.open} open ${s.open===1?'task':'tasks'}</span>
-      <span class="text-sm font-semibold">${fmt(s.hrs)}h <span class="font-normal" style="color:#5d6d79">total</span></span>
-      <span class="bar mt-auto" style="display:block;background:#e3e8ec"><span style="display:block;width:${pc}%;height:100%;background:${s.n&&s.done===s.n?'#2e9a57':color};transition:width .25s"></span></span>
-      <span class="text-[11px]" style="color:#7b8a95">${s.done}/${s.n} done</span></button>`};
-  return `<section aria-label="Projects">
-    <div class="flex items-center justify-between"><h2 class="font-bold">Projects</h2>
-      <button data-act="hubToggle" class="tap press flex items-center gap-1 text-sm font-semibold px-2" style="color:#5d6d79" aria-expanded="${UI.hub}">${UI.hub?'Hide':'Show'}<span style="display:inline-flex;transform:rotate(${UI.hub?180:0}deg)">${icon('down',18)}</span></button></div>
-    ${UI.hub?`<div class="grid grid-cols-2 gap-3 mt-1">
-      ${tile('all','All projects','#16222b',stat(vis))}
-      ${act.map(p=>tile(p.id,p.name,p.color,stat(vis.filter(t=>t.project_id===p.id)))).join('')}
-      <button data-act="newProj" class="press rounded-2xl flex flex-col items-center justify-center gap-1 font-semibold" style="min-height:116px;border:2px dashed #9aa8b2;color:#5d6d79">${icon('plus',24,2.4)}New project</button>
-    </div>`:''}</section>`;
+/* View 2: Dedicated Project screen */
+function renderProject(){
+  const p=proj(UI.pf),all=S.tasks.filter(t=>t.project_id===p.id),s=pstat(all);
+  const wk=weekHrs(new Set(all.map(t=>t.id))),pc=s.n?s.done/s.n*100:0;
+  const list=all.filter(t=>UI.tab==='all'||t.status===UI.tab).sort((a,b)=>ORDER[a.status]-ORDER[b.status]||b.updated_at-a.updated_at);
+  $('#app').innerHTML=`
+  <header class="sticky top-0 z-20 text-white" style="background:var(--ink);padding-top:env(safe-area-inset-top)">
+    <div class="pl-2 pr-2 pt-1 flex items-center justify-between">
+      <button data-act="back" class="tap press flex items-center gap-1 pr-3 pl-1 rounded-full font-semibold" style="min-height:48px" aria-label="Back to projects">${icon('arrowLeft',22,2.4)} Back to Projects</button>${gearBtn}</div>
+    <div class="px-4 pb-3 pt-1">
+      <div class="flex items-center gap-2"><span class="w-3.5 h-3.5 rounded-full shrink-0" style="background:${p.color}"></span><h1 class="text-xl font-bold leading-tight" style="overflow-wrap:anywhere">${esc(p.name)}</h1></div>
+      <div class="text-sm mt-1" style="color:#aebbc5"><b class="text-white text-base">${fmt(s.hrs)}h</b> logged &nbsp;|&nbsp; ${s.open} open &nbsp;|&nbsp; ${fmt(wk)}h this week</div>
+      <div class="bar mt-2" style="background:#2a3a46"><div style="width:${pc}%;height:100%;background:${p.color};transition:width .3s"></div></div>
+      <div class="text-xs mt-1" style="color:#8fa0ac">${s.done}/${s.n} jobs done</div>
+    </div>
+    <div class="grid grid-cols-4 px-2" style="border-top:1px solid #2a3a46">
+      ${TABS.map(([k,l])=>`<button data-act="tab" data-id="${k}" class="tap text-sm font-semibold py-2.5" style="color:${UI.tab===k?'#fff':'#8fa0ac'};border-bottom:3px solid ${UI.tab===k?'var(--amber)':'transparent'}">${l}</button>`).join('')}
+    </div>
+  </header>
+  <main class="px-3 pt-3 space-y-3" style="${MAIN_PAD}">
+    ${list.length?list.map(card).join(''):`<div class="text-center py-16 px-6" style="color:#5d6d79"><div class="mx-auto mb-3 w-14 h-14 rounded-full grid place-items-center" style="background:#dde2e6">${icon('clock',26)}</div><p class="font-semibold" style="color:var(--ink)">${all.length?'No jobs in this view':'No jobs yet'}</p><p class="text-sm mt-1">Tap <b>Log work</b> to add a job to this project.</p></div>`}
+  </main>${fabBtn}`;
 }
+
+/* ---------- Navigation: hash routing (#project/<id>) so the back gesture returns to the hub ---------- */
+function route(){
+  const m=location.hash.match(/^#project\/(.+)$/),id=m&&decodeURIComponent(m[1]),p=id&&proj(id);
+  const view=(p&&p.status==='active')?'project':'hub',pf=view==='project'?id:'all';
+  if(view==='hub'&&location.hash)history.replaceState(null,'',location.pathname+location.search);
+  if(UI.view!==view||UI.pf!==pf){UI.tab='all';UI.open.clear();window.scrollTo(0,0)}
+  UI.view=view;UI.pf=pf;if(view==='hub')UI.pushed=false;
+  renderMain();
+}
+const go=id=>{UI.pushed=true;location.hash='#project/'+encodeURIComponent(id)};
+const back=()=>{if(UI.pushed){UI.pushed=false;history.back()}else{history.replaceState(null,'',location.pathname+location.search);route()}};
 
 function card(t){
   const p=proj(t.project_id),sts=stepsOf(t.id),done=sts.filter(s=>s.is_completed).length;
@@ -226,8 +237,8 @@ function menuSheet(){
 /* ---------- Actions ---------- */
 const A={
   tab:id=>{UI.tab=id;renderMain()},
-  pf:id=>{UI.pf=(id==='all'||UI.pf===id)?'all':id;renderMain()},
-  hubToggle:()=>{UI.hub=!UI.hub;try{localStorage.setItem('hub',UI.hub?'1':'0')}catch(e){}renderMain()},
+  open:id=>go(id),
+  back:()=>back(),
   toggle:id=>{UI.open.has(id)?UI.open.delete(id):UI.open.add(id);renderMain()},
   cycle:id=>{const t=S.tasks.find(x=>x.id===id);t.status=CYCLE[(CYCLE.indexOf(t.status)+1)%4];t.updated_at=Date.now();save('tasks',t);renderMain()},
   stepToggle:id=>{const s=S.steps.find(x=>x.id===id);s.is_completed=!s.is_completed;save('steps',s);renderMain();
@@ -239,7 +250,10 @@ const A={
   taskDel:id=>{if(!confirm('Delete this job with its steps and logged hours?'))return;
     stepsOf(id).forEach(s=>remove('steps',s.id));S.logs.filter(l=>l.task_id===id).forEach(l=>remove('logs',l.id));
     S.steps=S.steps.filter(s=>s.task_id!==id);S.logs=S.logs.filter(l=>l.task_id!==id);S.tasks=S.tasks.filter(t=>t.id!==id);remove('tasks',id);renderMain()},
-  logOpen:()=>{const act=activeProjects();UI.sheet={project_id:(UI.pf!=='all'&&proj(UI.pf)?.status==='active')?UI.pf:(act[0]?.id||null),task_id:null,hours:0,status:null,note:'',title:'',due:''};renderOverlay()},
+  logOpen:()=>{const inProj=UI.view==='project'&&proj(UI.pf);
+    const recent=[...S.tasks].sort((a,b)=>b.updated_at-a.updated_at).find(t=>proj(t.project_id)?.status==='active');
+    const pid=inProj?UI.pf:(recent?.project_id||activeProjects()[0]?.id||null);
+    UI.sheet={project_id:pid,task_id:(pid&&!S.tasks.some(t=>t.project_id===pid))?'new':null,hours:0,status:null,note:'',title:'',due:''};renderOverlay()},
   logTask:id=>{const t=S.tasks.find(x=>x.id===id);UI.sheet={project_id:t.project_id,task_id:id,hours:0,status:null,note:'',title:'',due:''};renderOverlay()},
   sProj:id=>{UI.sheet.project_id=id;UI.sheet.task_id=null;renderOverlay()},
   sTask:id=>{UI.sheet.task_id=id;UI.sheet.status=null;renderOverlay()},
@@ -248,8 +262,7 @@ const A={
   sStatus:id=>{UI.sheet.status=id;renderOverlay()},
   newProj:()=>{const n=(prompt('Project name')||'').trim();if(!n)return;
     const p={id:uid(),name:n,color:PALETTE[S.projects.length%PALETTE.length],status:'active',created_at:Date.now()};S.projects.push(p);save('projects',p);
-    if(UI.sheet){UI.sheet.project_id=p.id;UI.sheet.task_id='new'}else UI.pf=p.id;
-    renderOverlay();renderMain()},
+    if(UI.sheet){UI.sheet.project_id=p.id;UI.sheet.task_id='new';renderOverlay();renderMain()}else go(p.id)},
   saveLog:()=>{const q=UI.sheet;if(!q.project_id)return toast('Pick or add a project');
     let t;if(q.task_id==='new'){const title=q.title.trim();if(!title)return toast('Name the new job');
       t={id:uid(),project_id:q.project_id,title,status:'todo',total_hours:0,due_date:q.due||null,updated_at:Date.now()};S.tasks.push(t)}
@@ -261,7 +274,7 @@ const A={
     UI.sheet=null;renderOverlay();renderMain();haptic([12,30,12]);toast(q.hours>0?`Logged ${fmt(q.hours)}h`:'Saved')},
   menu:()=>{UI.menu=true;renderOverlay()},
   close:()=>{UI.sheet=null;UI.menu=false;renderOverlay()},
-  archive:id=>{const p=proj(id);p.status=p.status==='active'?'archived':'active';save('projects',p);if(UI.pf===id)UI.pf='all';renderOverlay();renderMain()},
+  archive:id=>{const p=proj(id);p.status=p.status==='active'?'archived':'active';save('projects',p);renderOverlay();route()},
   exportJson:()=>{const d={app:'workload-tracker',version:1,exported_at:new Date().toISOString(),data:{projects:S.projects,tasks:S.tasks,steps:S.steps,logs:S.logs,settings:{weekly_target:S.target}}};
     saveFile(`workload-backup-${todayISO()}.json`,'application/json',JSON.stringify(d,null,2))},
   importJson:()=>$('#importFile').click(),
@@ -283,7 +296,7 @@ $('#importFile').addEventListener('change',async e=>{
   try{const j=JSON.parse(await f.text());const d=j.data||j;
     if(!Array.isArray(d.projects)||!Array.isArray(d.tasks))throw 0;
     if(!confirm(`Replace all current data with this backup (${d.projects.length} projects, ${d.tasks.length} jobs)?`))return;
-    await replaceAll(d);await loadAll();UI.pf='all';UI.open.clear();A.close();renderMain();toast('Backup restored')}
+    await replaceAll(d);await loadAll();UI.open.clear();A.close();route();toast('Backup restored')}
   catch(err){toast('Not a valid backup file')}});
 
 /* ---------- Events ---------- */
@@ -292,11 +305,13 @@ document.addEventListener('input',e=>{const k=e.target.dataset.bind;if(k&&UI.she
 document.addEventListener('change',e=>{if(e.target.id==='targetIn'){const v=parseFloat(e.target.value);if(v>0){S.target=v;saveTarget();renderMain()}}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'){if(e.target.dataset.add)A.stepAdd(e.target.dataset.add);else if(e.target.dataset.bind)e.target.blur()}});
 
+addEventListener('hashchange',()=>{UI.sheet=null;UI.menu=false;renderOverlay();route()});
+
 /* ---------- Boot ---------- */
 (async()=>{
   try{idb=await openDB();await loadAll();navigator.storage?.persist?.()}
   catch(e){toast('Storage unavailable: data will not be saved')}
-  renderMain();renderOverlay();
+  route();renderOverlay();
 })();
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
