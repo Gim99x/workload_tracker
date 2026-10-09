@@ -63,7 +63,8 @@ const fmtDate=d=>new Date(d+'T00:00').toLocaleDateString(undefined,{month:'short
 /* ---------- IndexedDB (write-through; UI reads from memory) ---------- */
 let idb;
 const S={projects:[],tasks:[],steps:[],logs:[],target:20};
-const UI={tab:'all',pf:'all',open:new Set(),sheet:null,menu:false};
+const UI={tab:'all',pf:'all',open:new Set(),sheet:null,menu:false,
+  hub:(()=>{try{return localStorage.getItem('hub')!=='0'}catch(e){return true}})()};
 const openDB=()=>new Promise((res,rej)=>{const r=indexedDB.open('workload-tracker',1);
   r.onupgradeneeded=()=>{STORES.forEach(s=>r.result.createObjectStore(s,{keyPath:'id'}));r.result.createObjectStore('meta',{keyPath:'k'})};
   r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
@@ -88,7 +89,9 @@ const stepsOf=id=>S.steps.filter(s=>s.task_id===id);
 /* ---------- Main render ---------- */
 function renderMain(){
   const strip=$('#chips');const sl=strip?strip.scrollLeft:0;
-  const wh=S.logs.filter(l=>l.logged_at>=weekStart()).reduce((a,l)=>a+l.hours,0);
+  const f=UI.pf!=='all'?proj(UI.pf):null;
+  const tp=Object.fromEntries(S.tasks.map(t=>[t.id,t.project_id]));
+  const wh=S.logs.filter(l=>l.logged_at>=weekStart()&&(!f||tp[l.task_id]===f.id)).reduce((a,l)=>a+l.hours,0);
   const pct=Math.min(100,wh/(S.target||1)*100);
   const tabs=[['all','All'],['in_progress','In progress'],['todo','Todo'],['completed','Done']];
   const act=activeProjects();
@@ -101,7 +104,7 @@ function renderMain(){
       <button data-act="menu" class="tap press rounded-full grid place-items-center" aria-label="Menu">${icon('menu')}</button>
     </div>
     <div class="px-4 pb-3">
-      <div class="flex justify-between items-baseline text-sm" style="color:#aebbc5"><span>This week</span><span><b class="text-white text-base">${fmt(wh)}h</b> of ${fmt(S.target)}h</span></div>
+      <div class="flex justify-between items-baseline text-sm" style="color:#aebbc5"><span>This week${f?' · '+esc(f.name):''}</span><span><b class="text-white text-base">${fmt(wh)}h</b> of ${fmt(S.target)}h</span></div>
       <div class="bar mt-1.5" style="background:#2a3a46"><div style="width:${pct}%;height:100%;background:${wh>=S.target?'#7dd3c0':'var(--amber)'};transition:width .3s"></div></div>
     </div>
     <div class="grid grid-cols-4 px-2" style="border-top:1px solid #2a3a46">
@@ -113,10 +116,34 @@ function renderMain(){
     </div>
   </header>
   <main class="px-3 pt-3 space-y-3" style="padding-bottom:calc(env(safe-area-inset-bottom) + 110px)">
+    ${hub(act)}
+    <h2 class="font-bold pt-1">Jobs${f?' · '+esc(f.name):''}</h2>
     ${list.length?list.map(card).join(''):`<div class="text-center py-16 px-6" style="color:#5d6d79"><div class="mx-auto mb-3 w-14 h-14 rounded-full grid place-items-center" style="background:#dde2e6">${icon('clock',26)}</div><p class="font-semibold" style="color:var(--ink)">${S.tasks.length?'No jobs match this view':'No jobs yet'}</p><p class="text-sm mt-1">Tap <b>Log work</b> to add a project, a job and your first hours.</p></div>`}
   </main>
   <button data-act="logOpen" class="press fixed right-4 z-30 rounded-full font-bold flex items-center gap-2 px-5 shadow-xl" style="min-height:56px;background:var(--amber);color:#16222b;bottom:calc(env(safe-area-inset-bottom) + 16px)">${icon('plus',22,2.6)} Log work</button>`;
   const c=$('#chips');if(c)c.scrollLeft=sl;
+}
+
+/* ---------- Project hub (tile grid; all numbers computed live from in-memory data) ---------- */
+function hub(act){
+  const vis=S.tasks.filter(t=>proj(t.project_id)?.status==='active');
+  const stat=ts=>({n:ts.length,open:ts.filter(t=>t.status!=='completed').length,done:ts.filter(t=>t.status==='completed').length,hrs:ts.reduce((a,t)=>a+t.total_hours,0)});
+  const tile=(id,name,color,s)=>{
+    const on=UI.pf===id,pc=s.n?s.done/s.n*100:0;
+    return `<button data-act="pf" data-id="${id}" aria-pressed="${on}" class="press text-left rounded-2xl p-3 flex flex-col gap-1" style="min-height:116px;border-left:6px solid ${color};background:${on?color+'14':'#fff'};box-shadow:${on?`0 0 0 3px ${color},0 8px 18px ${color}45`:'0 0 0 1px #e1e6ea'}">
+      <span class="font-bold text-[15px] leading-tight truncate w-full">${esc(name)}</span>
+      <span class="text-sm" style="color:#5d6d79">${s.open} open ${s.open===1?'task':'tasks'}</span>
+      <span class="text-sm font-semibold">${fmt(s.hrs)}h <span class="font-normal" style="color:#5d6d79">total</span></span>
+      <span class="bar mt-auto" style="display:block;background:#e3e8ec"><span style="display:block;width:${pc}%;height:100%;background:${s.n&&s.done===s.n?'#2e9a57':color};transition:width .25s"></span></span>
+      <span class="text-[11px]" style="color:#7b8a95">${s.done}/${s.n} done</span></button>`};
+  return `<section aria-label="Projects">
+    <div class="flex items-center justify-between"><h2 class="font-bold">Projects</h2>
+      <button data-act="hubToggle" class="tap press flex items-center gap-1 text-sm font-semibold px-2" style="color:#5d6d79" aria-expanded="${UI.hub}">${UI.hub?'Hide':'Show'}<span style="display:inline-flex;transform:rotate(${UI.hub?180:0}deg)">${icon('down',18)}</span></button></div>
+    ${UI.hub?`<div class="grid grid-cols-2 gap-3 mt-1">
+      ${tile('all','All projects','#16222b',stat(vis))}
+      ${act.map(p=>tile(p.id,p.name,p.color,stat(vis.filter(t=>t.project_id===p.id)))).join('')}
+      <button data-act="newProj" class="press rounded-2xl flex flex-col items-center justify-center gap-1 font-semibold" style="min-height:116px;border:2px dashed #9aa8b2;color:#5d6d79">${icon('plus',24,2.4)}New project</button>
+    </div>`:''}</section>`;
 }
 
 function card(t){
@@ -199,7 +226,8 @@ function menuSheet(){
 /* ---------- Actions ---------- */
 const A={
   tab:id=>{UI.tab=id;renderMain()},
-  pf:id=>{UI.pf=id;renderMain()},
+  pf:id=>{UI.pf=(id==='all'||UI.pf===id)?'all':id;renderMain()},
+  hubToggle:()=>{UI.hub=!UI.hub;try{localStorage.setItem('hub',UI.hub?'1':'0')}catch(e){}renderMain()},
   toggle:id=>{UI.open.has(id)?UI.open.delete(id):UI.open.add(id);renderMain()},
   cycle:id=>{const t=S.tasks.find(x=>x.id===id);t.status=CYCLE[(CYCLE.indexOf(t.status)+1)%4];t.updated_at=Date.now();save('tasks',t);renderMain()},
   stepToggle:id=>{const s=S.steps.find(x=>x.id===id);s.is_completed=!s.is_completed;save('steps',s);renderMain();
@@ -220,7 +248,8 @@ const A={
   sStatus:id=>{UI.sheet.status=id;renderOverlay()},
   newProj:()=>{const n=(prompt('Project name')||'').trim();if(!n)return;
     const p={id:uid(),name:n,color:PALETTE[S.projects.length%PALETTE.length],status:'active',created_at:Date.now()};S.projects.push(p);save('projects',p);
-    if(UI.sheet){UI.sheet.project_id=p.id;UI.sheet.task_id='new'}renderOverlay();renderMain()},
+    if(UI.sheet){UI.sheet.project_id=p.id;UI.sheet.task_id='new'}else UI.pf=p.id;
+    renderOverlay();renderMain()},
   saveLog:()=>{const q=UI.sheet;if(!q.project_id)return toast('Pick or add a project');
     let t;if(q.task_id==='new'){const title=q.title.trim();if(!title)return toast('Name the new job');
       t={id:uid(),project_id:q.project_id,title,status:'todo',total_hours:0,due_date:q.due||null,updated_at:Date.now()};S.tasks.push(t)}
